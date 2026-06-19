@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Snake Souris - Mode Hardcore</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: #fff;
+            text-align: center;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+            user-select: none;
+        }
+        h1 { color: #ff3333; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 2px; }
+        #scoreBoard { font-size: 28px; font-weight: bold; color: #00ff88; margin-bottom: 10px; }
+        canvas {
+            background-color: #0b0b0b;
+            border: 4px solid #ff3333; /* Mur rouge mortel */
+            box-shadow: 0 0 30px rgba(255, 51, 51, 0.3);
+            display: block;
+            margin: 10px auto;
+            cursor: none; /* Cache la souris pour plus d'immersion */
+        }
+        .info { color: #aaa; font-size: 16px; }
+        .danger { color: #ff3333; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>⚠️ SNAKE : RISQUE MAXIMUM ⚠️</h1>
+    <div id="scoreBoard">SCORE : <span id="score">0</span></div>
+    <canvas id="gameCanvas" width="700" height="450"></canvas>
+    <p class="info">Guide le serpent avec ta souris. <span class="danger">ATTENTION aux bords rouges et à ton propre corps !</span></p>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let snake = [];
+        let snakeLength = 10; 
+        const segmentDist = 10; // Distance physique entre les morceaux
+
+        let mouse = { x: 350, y: 225 };
+        let apple = { x: 0, y: 0, radius: 12 };
+        let score = 0;
+        let baseSpeed = 4.5; // Vitesse de départ
+        let isGameOver = false;
+
+        // Initialisation au centre
+        function initGame() {
+            snake = [];
+            snakeLength = 10;
+            score = 0;
+            baseSpeed = 4.5;
+            isGameOver = false;
+            document.getElementById("score").innerText = score;
+            
+            for (let i = 0; i < snakeLength; i++) {
+                snake.push({ x: 350, y: 225 });
+            }
+            generateApple();
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isGameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            mouse.x = e.clientX - rect.left;
+            mouse.y = e.clientY - rect.top;
+        });
+
+        // Relancer le jeu en cliquant après un Game Over
+        canvas.addEventListener('click', () => {
+            if (isGameOver) initGame();
+        });
+
+        function gameLoop() {
+            if (isGameOver) {
+                drawGameOver();
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            // 1. Calcul de la direction vers la souris
+            let head = { ...snake[0] };
+            let dx = mouse.x - head.x;
+            let dy = mouse.y - head.y;
+            let angle = Math.atan2(dy, dx);
+            let dist = Math.sqrt(dx*dx + dy*dy);
+
+            // Augmentation de la vitesse selon le score (effet d'accélération)
+            let currentSpeed = baseSpeed + (score * 0.15);
+
+            if (dist > 5) {
+                head.x += Math.cos(angle) * currentSpeed;
+                head.y += Math.sin(angle) * currentSpeed;
+            }
+
+            // --- VÉRIFICATION DES RISQUES (COLLISIONS) ---
+
+            // Risque A : Collision avec les murs extérieurs
+            if (head.x < 0 || head.x > canvas.width || head.y < 0 || head.y > canvas.height) {
+                isGameOver = true;
+            }
+
+            // Risque B : Collision avec son propre corps (on ignore les premiers morceaux proches de la tête)
+            for (let i = 15; i < snake.length; i++) {
+                let sDx = head.x - snake[i].x;
+                let sDy = head.y - snake[i].y;
+                let sDist = Math.sqrt(sDx*sDx + sDy*sDy);
+                if (sDist < 8) { // Si la tête touche un morceau du corps
+                    isGameOver = true;
+                }
+            }
+
+            // Mise à jour de la position de la tête
+            snake.unshift(head);
+            if (snake.length > snakeLength) {
+                snake.pop();
+            }
+
+            // 2. Mouvement fluide du corps
+            for (let i = 1; i < snake.length; i++) {
+                let prev = snake[i - 1];
+                let curr = snake[i];
+                let cDx = prev.x - curr.x;
+                let cDy = prev.y - curr.y;
+                let cDist = Math.sqrt(cDx*cDx + cDy*cDy);
+
+                if (cDist > segmentDist) {
+                    let cAngle = Math.atan2(cDy, cDx);
+                    curr.x = prev.x - Math.cos(cAngle) * segmentDist;
+                    curr.y = prev.y - Math.sin(cAngle) * segmentDist;
+                }
+            }
+
+            // 3. Capture de la pomme
+            let pDx = head.x - apple.x;
+            let pDy = head.y - apple.y;
+            let pDist = Math.sqrt(pDx*pDx + pDy*pDy);
+
+            if (pDist < (12 + apple.radius)) {
+                score += 1;
+                document.getElementById("score").innerText = score;
+                snakeLength += 4; // Grandit beaucoup plus vite pour augmenter le danger !
+                generateApple();
+            }
+
+            // 4. RENDU GRAPHIQUE
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dessin de la pomme
+            ctx.beginPath();
+            ctx.arc(apple.x, apple.y, apple.radius, 0, Math.PI * 2);
+            ctx.fillStyle = "#ff3333";
+            ctx.fill();
+            ctx.closePath();
+
+            // Dessin du serpent (Dégradé de la tête au corps)
+            for (let i = snake.length - 1; i >= 0; i--) {
+                ctx.beginPath();
+                let radius = i === 0 ? 12 : 9 - (i * 0.05);
+                if (radius < 4) radius = 4;
+
+                ctx.arc(snake[i].x, snake[i].y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = i === 0 ? "#00ff88" : "rgba(0, 200, 100, " + (1 - i/snake.length) + ")";
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function generateApple() {
+            apple.x = Math.random() * (canvas.width - 60) + 30;
+            apple.y = Math.random() * (canvas.height - 60) + 30;
+        }
+
+        function drawGameOver() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = "#ff3333";
+            ctx.font = "bold 40px 'Segoe UI', Arial";
+            ctx.fillText("CRASH / GAME OVER", canvas.width/2 - 180, canvas.height/2 - 10);
+            
+            ctx.fillStyle = "#fff";
+            ctx.font = "20px 'Segoe UI', Arial";
+            ctx.fillText("Score final : " + score, canvas.width/2 - 60, canvas.height/2 + 30);
+            ctx.fillText("Clique sur l'écran pour recommencer", canvas.width/2 - 160, canvas.height/2 + 70);
+        }
+
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
